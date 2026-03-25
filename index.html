@@ -459,7 +459,7 @@ function startTracking(){
 		updateUserMarker();
 		document.getElementById('ld').classList.add('h');
 		if(navigating&&carPos)updateNav();
-	},function(){document.getElementById('ld').classList.add('h');toast('Enable location access',1);},
+	},function(err){document.getElementById('ld').classList.add('h');toast('GPS Error: '+err.message+' (code:'+err.code+')',1);},
 	{enableHighAccuracy:true,maximumAge:3000,timeout:15000});
 }
 function updateUserMarker(){
