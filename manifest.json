@@ -1,11 +1,11 @@
 {
-	"name": "ParkMe - Find Your Car",
-	"short_name": "ParkMe",
-	"description": "Mark where you parked and navigate back to your car",
+	"name": "Dude Where Is My Car",
+	"short_name": "DWIMC",
+	"description": "Never forget where you parked. Mark your spot, take a photo, and navigate back with voice guidance.",
 	"start_url": "/",
 	"display": "standalone",
-	"background_color": "#0f0f1a",
-	"theme_color": "#1a1a2e",
+	"background_color": "#0a0a1a",
+	"theme_color": "#0a0a1a",
 	"orientation": "portrait",
 	"icons": [
 		{
