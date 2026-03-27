@@ -1,0 +1,941 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+	<meta name="apple-mobile-web-app-capable" content="yes">
+	<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+	<meta name="theme-color" content="#0a0a1a">
+	<meta name="description" content="Mark where you parked and navigate back to your car with voice guidance">
+	<title>Dude Where Is My Car</title>
+	<link rel="manifest" href="manifest.json">
+	<link rel="apple-touch-icon" href="icon-192.png">
+	<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+	<style>
+		*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+		:root{
+			--bg:#0a0a1a;--card:#141428;--card2:#1c1c38;--card3:#232348;
+			--accent:#33ccff;--accent2:#ff4d6a;--green:#00d672;--orange:#ff9f43;--purple:#a855f7;
+			--text:#eef0f6;--muted:#6b7294;--dim:#3a3a5c;
+			--radius:18px;--safe-top:env(safe-area-inset-top,0px);--safe-bottom:env(safe-area-inset-bottom,0px);
+		}
+		html,body{height:100%;overflow:hidden}
+		body{font-family:-apple-system,BlinkMacSystemFont,'SF Pro Display','Segoe UI',Roboto,sans-serif;background:var(--bg);color:var(--text);-webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent}
+		.app{height:100%;display:flex;flex-direction:column;padding-top:var(--safe-top)}
+
+		/* HEADER */
+		.header{padding:10px 16px;display:flex;align-items:center;justify-content:space-between;background:var(--card);border-bottom:1px solid rgba(255,255,255,0.04);flex-shrink:0;z-index:10}
+		.header h1{font-size:18px;font-weight:800;display:flex;align-items:center;gap:7px;letter-spacing:-0.3px}
+		.header h1 em{font-style:normal;color:var(--accent)}
+		.header-actions{display:flex;gap:5px}
+		.ibtn{width:36px;height:36px;border-radius:11px;border:none;background:rgba(255,255,255,0.05);color:var(--muted);font-size:16px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s}
+		.ibtn:active{background:rgba(51,204,255,0.15);color:var(--accent);transform:scale(0.9)}
+		.ibtn.active{background:rgba(51,204,255,0.15);color:var(--accent)}
+
+		/* MAP */
+		.map-wrap{flex:1;position:relative;min-height:0}
+		#map{width:100%;height:100%;z-index:1}
+		.leaflet-control-attribution,.leaflet-control-zoom{display:none!important}
+
+		/* NAV BAR */
+		.nav-bar{position:absolute;top:12px;left:12px;right:12px;z-index:5;background:rgba(20,20,40,0.92);backdrop-filter:blur(16px);border-radius:var(--radius);padding:14px 16px;border:1px solid rgba(255,255,255,0.06);display:none}
+		.nav-bar.v{display:block}
+		.nav-row{display:flex;align-items:center;justify-content:space-between}
+		.nav-left{display:flex;align-items:center;gap:12px}
+		.nav-icon{width:42px;height:42px;border-radius:50%;background:linear-gradient(135deg,var(--accent),#0088cc);display:flex;align-items:center;justify-content:center;font-size:20px;box-shadow:0 4px 16px rgba(51,204,255,0.25)}
+		.nav-text h3{font-size:14px;font-weight:700}
+		.nav-text p{font-size:11px;color:var(--muted);margin-top:1px}
+		.nav-dist{font-size:22px;font-weight:800;color:var(--green)}
+		.nav-eta{font-size:11px;color:var(--muted);text-align:right}
+		/* Step instruction */
+		.nav-step{margin-top:10px;padding-top:10px;border-top:1px solid rgba(255,255,255,0.06);display:flex;align-items:center;gap:10px;font-size:13px;color:var(--text)}
+		.nav-step-icon{font-size:20px}
+
+		/* SPEED */
+		.speed-pill{position:absolute;top:12px;left:12px;z-index:5;background:rgba(20,20,40,0.88);backdrop-filter:blur(16px);border-radius:14px;padding:6px 12px;display:none;align-items:center;gap:6px;border:1px solid rgba(255,255,255,0.06)}
+		.speed-pill.v{display:flex}
+		.speed-v{font-size:20px;font-weight:800;color:var(--green);line-height:1}
+		.speed-u{font-size:10px;color:var(--muted);font-weight:600}
+
+		/* COMPASS */
+		.compass-wrap{position:absolute;bottom:210px;left:50%;transform:translateX(-50%);z-index:5;display:none;flex-direction:column;align-items:center;gap:6px}
+		.compass-wrap.v{display:flex}
+		.compass-outer{width:100px;height:100px;border-radius:50%;background:rgba(20,20,40,0.92);backdrop-filter:blur(16px);border:2px solid rgba(51,204,255,0.25);display:flex;align-items:center;justify-content:center;box-shadow:0 8px 32px rgba(0,0,0,0.4),inset 0 0 30px rgba(51,204,255,0.05)}
+		.compass-arrow{width:0;height:0;border-left:12px solid transparent;border-right:12px solid transparent;border-bottom:44px solid var(--accent);filter:drop-shadow(0 0 8px rgba(51,204,255,0.5));transition:transform .15s ease-out}
+		.compass-lbl{font-size:10px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:1px}
+
+		/* FABs */
+		.fab-col{position:absolute;right:12px;bottom:210px;z-index:6;display:flex;flex-direction:column;gap:7px}
+		.fab{width:42px;height:42px;border-radius:50%;border:none;background:rgba(20,20,40,0.9);backdrop-filter:blur(12px);color:var(--muted);font-size:16px;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 16px rgba(0,0,0,0.3);border:1px solid rgba(255,255,255,0.06);transition:all .15s}
+		.fab:active{transform:scale(0.9);color:var(--accent)}
+
+		/* BOTTOM SHEET */
+		.sheet{position:absolute;bottom:0;left:0;right:0;z-index:8;background:var(--card);border-radius:22px 22px 0 0;padding:10px 16px;padding-bottom:calc(14px + var(--safe-bottom));transition:transform .35s cubic-bezier(0.4,0,0.2,1);box-shadow:0 -8px 40px rgba(0,0,0,0.5);border-top:1px solid rgba(255,255,255,0.06);max-height:70vh;overflow-y:auto}
+		.sheet-handle{width:36px;height:4px;background:var(--dim);border-radius:4px;margin:0 auto 12px}
+		.sheet-timer{text-align:center;font-size:12px;color:var(--muted);margin-bottom:8px;display:none}
+		.sheet-timer.v{display:block}
+		.sheet-timer span{color:var(--accent);font-weight:700}
+
+		/* PARKING DETAILS */
+		.park-chips{display:none;gap:6px;margin-bottom:10px}
+		.park-chips.v{display:flex}
+		.chip{flex:1;background:var(--card2);border-radius:10px;padding:8px;text-align:center;border:1px solid rgba(255,255,255,0.04)}
+		.chip label{display:block;font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px}
+		.chip .cv{font-size:13px;font-weight:700}
+
+		/* PARKING PHOTO */
+		.park-photo{display:none;margin-bottom:10px}
+		.park-photo.v{display:block}
+		.park-photo img{width:100%;height:120px;object-fit:cover;border-radius:12px;border:1px solid rgba(255,255,255,0.06)}
+
+		/* PARKING TIMER ALARM */
+		.timer-alarm{display:none;background:var(--card2);border-radius:12px;padding:10px 14px;margin-bottom:10px;border:1px solid rgba(255,255,255,0.04)}
+		.timer-alarm.v{display:block}
+		.timer-alarm-row{display:flex;align-items:center;justify-content:space-between}
+		.timer-alarm-left{display:flex;align-items:center;gap:8px}
+		.timer-alarm-left span:first-child{font-size:18px}
+		.timer-alarm-time{font-size:18px;font-weight:800;color:var(--orange)}
+		.timer-alarm-label{font-size:11px;color:var(--muted)}
+
+		/* MULTI CAR SELECTOR */
+		.car-tabs{display:flex;gap:6px;margin-bottom:10px;overflow-x:auto;-webkit-overflow-scrolling:touch}
+		.car-tab{flex-shrink:0;padding:8px 14px;border-radius:10px;background:var(--card2);border:1px solid rgba(255,255,255,0.04);font-size:12px;font-weight:600;color:var(--muted);cursor:pointer;display:flex;align-items:center;gap:6px;transition:all .15s}
+		.car-tab.active{background:rgba(51,204,255,0.12);color:var(--accent);border-color:rgba(51,204,255,0.2)}
+		.car-tab .car-emoji{font-size:16px}
+		.car-tab-add{color:var(--dim)}
+
+		/* BUTTONS */
+		.abtn{width:100%;padding:15px;border-radius:14px;border:none;font-size:15px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;transition:all .15s;letter-spacing:.3px}
+		.abtn:active{transform:scale(0.97)}
+		.abtn.park{background:linear-gradient(135deg,var(--accent),#0099dd);color:#fff;box-shadow:0 4px 24px rgba(51,204,255,0.3)}
+		.abtn.go{background:linear-gradient(135deg,var(--green),#00b060);color:#0a0a1a;box-shadow:0 4px 24px rgba(0,214,114,0.3)}
+		.abtn.stop{background:var(--accent2);color:#fff}
+		.abtn.sec{background:var(--card2);color:var(--muted)}
+		.brow{display:flex;gap:7px}
+		.brow .abtn{flex:1}
+		.brow .abtn.sq{flex:0;width:50px;min-width:50px;padding:15px 0;font-size:17px}
+
+		/* TOAST */
+		.toast{position:absolute;top:60px;left:50%;transform:translateX(-50%) translateY(-20px);z-index:30;background:var(--green);color:#0a0a1a;padding:10px 20px;border-radius:14px;font-size:13px;font-weight:700;opacity:0;transition:all .3s;pointer-events:none;white-space:nowrap;box-shadow:0 4px 20px rgba(0,214,114,0.3)}
+		.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+		.toast.err{background:var(--accent2);color:#fff;box-shadow:0 4px 20px rgba(255,77,106,0.3)}
+
+		/* LOADING */
+		.ld{position:absolute;inset:0;z-index:50;background:var(--bg);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;transition:opacity .4s}
+		.ld.h{opacity:0;pointer-events:none}
+		.ld-i{font-size:52px;animation:bob 1.5s ease-in-out infinite}
+		.ld p{color:var(--muted);font-size:14px}
+		@keyframes bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-8px)}}
+
+		/* PANELS (History, Favorites, Settings) */
+		.panel{position:absolute;top:0;right:0;bottom:0;width:300px;z-index:40;background:var(--card);transform:translateX(100%);transition:transform .3s cubic-bezier(0.4,0,0.2,1);border-left:1px solid rgba(255,255,255,0.06);overflow-y:auto}
+		.panel.open{transform:translateX(0)}
+		.overlay{position:absolute;inset:0;z-index:35;background:rgba(0,0,0,0.5);opacity:0;pointer-events:none;transition:opacity .3s}
+		.overlay.open{opacity:1;pointer-events:auto}
+		.panel-hdr{padding:14px 16px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid rgba(255,255,255,0.06)}
+		.panel-hdr h2{font-size:16px;font-weight:700}
+		.panel-item{padding:12px 16px;border-bottom:1px solid rgba(255,255,255,0.03);display:flex;align-items:center;gap:10px;cursor:pointer;transition:background .15s}
+		.panel-item:active{background:rgba(255,255,255,0.03)}
+		.pi-icon{width:34px;height:34px;border-radius:10px;background:rgba(51,204,255,0.1);display:flex;align-items:center;justify-content:center;font-size:15px;flex-shrink:0}
+		.pi-icon.fav{background:rgba(168,85,247,0.1)}
+		.pi-text{font-size:12px;color:var(--text)}
+		.pi-text small{display:block;color:var(--muted);font-size:10px;margin-top:1px}
+		.panel-empty{padding:40px 16px;text-align:center;color:var(--muted);font-size:13px}
+
+		/* MODAL */
+		.modal{position:fixed;inset:0;z-index:50;background:rgba(0,0,0,0.6);display:none;align-items:flex-end;justify-content:center}
+		.modal.open{display:flex}
+		.modal-c{width:100%;max-width:420px;background:var(--card);border-radius:22px 22px 0 0;padding:18px 16px;padding-bottom:calc(18px + var(--safe-bottom))}
+		.modal-c h3{font-size:16px;font-weight:700;margin-bottom:14px;text-align:center}
+		.minp{width:100%;padding:12px;border-radius:11px;border:1px solid var(--dim);background:var(--card2);color:var(--text);font-size:14px;font-family:inherit;margin-bottom:8px;outline:none}
+		.minp:focus{border-color:var(--accent)}
+		.minp::placeholder{color:var(--muted)}
+		.mrow{display:flex;gap:7px}
+		.mrow .minp{flex:1}
+		.mbrow{display:flex;gap:7px;margin-top:12px}
+		.mbtn{flex:1;padding:13px;border-radius:11px;border:none;font-size:14px;font-weight:700;cursor:pointer}
+		.mbtn.c{background:var(--card2);color:var(--muted)}
+		.mbtn.ok{background:var(--accent);color:#fff}
+
+		/* TIMER MODAL */
+		.timer-input{display:flex;align-items:center;gap:8px;justify-content:center;margin:16px 0}
+		.timer-input input{width:60px;padding:12px;border-radius:11px;border:1px solid var(--dim);background:var(--card2);color:var(--text);font-size:20px;font-weight:700;text-align:center;font-family:inherit;outline:none}
+		.timer-input input:focus{border-color:var(--accent)}
+		.timer-input span{font-size:20px;font-weight:700;color:var(--muted)}
+
+		/* PHOTO CAPTURE */
+		.photo-btn{display:flex;align-items:center;justify-content:center;gap:8px;padding:12px;border-radius:11px;border:2px dashed var(--dim);background:transparent;color:var(--muted);font-size:13px;font-weight:600;cursor:pointer;width:100%;margin-bottom:8px;transition:all .15s}
+		.photo-btn:active{border-color:var(--accent);color:var(--accent)}
+		#photo-input{display:none}
+
+		/* CELEBRATION */
+		.celeb{position:fixed;inset:0;z-index:60;display:none;align-items:center;justify-content:center;background:rgba(10,10,26,0.88)}
+		.celeb.show{display:flex}
+		.celeb-in{text-align:center;animation:popIn .4s cubic-bezier(0.175,0.885,0.32,1.275)}
+		.celeb-i{font-size:72px;margin-bottom:16px}
+		.celeb-in h2{font-size:22px;font-weight:800;margin-bottom:6px}
+		.celeb-in p{color:var(--muted);font-size:13px;margin-bottom:20px}
+		@keyframes popIn{0%{transform:scale(0.5);opacity:0}100%{transform:scale(1);opacity:1}}
+
+		/* CONFETTI */
+		.confetti-piece{position:fixed;z-index:61;width:8px;height:8px;border-radius:2px;pointer-events:none;animation:confetti-fall 3s ease-out forwards}
+		@keyframes confetti-fall{0%{transform:translateY(0) rotate(0deg);opacity:1}100%{transform:translateY(100vh) rotate(720deg);opacity:0}}
+
+		/* ONBOARDING */
+		.onboard{position:fixed;inset:0;z-index:70;background:var(--bg);display:none;flex-direction:column;align-items:center;justify-content:center;padding:24px}
+		.onboard.show{display:flex}
+		.ob-slide{text-align:center;max-width:300px}
+		.ob-icon{font-size:64px;margin-bottom:20px}
+		.ob-slide h2{font-size:22px;font-weight:800;margin-bottom:10px}
+		.ob-slide p{color:var(--muted);font-size:14px;line-height:1.5;margin-bottom:24px}
+		.ob-dots{display:flex;gap:8px;justify-content:center;margin-bottom:24px}
+		.ob-dot{width:8px;height:8px;border-radius:50%;background:var(--dim);transition:all .2s}
+		.ob-dot.active{background:var(--accent);width:24px;border-radius:4px}
+
+		/* MARKERS */
+		.car-marker{background:none;border:none;font-size:34px;text-shadow:0 3px 12px rgba(0,0,0,0.6);filter:drop-shadow(0 0 6px rgba(51,204,255,0.4))}
+		.fav-marker{background:none;border:none;font-size:24px;text-shadow:0 2px 8px rgba(0,0,0,0.5)}
+		.you-marker{width:16px;height:16px;background:var(--accent);border:3px solid #fff;border-radius:50%;box-shadow:0 0 16px rgba(51,204,255,0.6)}
+		.you-pulse{width:40px;height:40px;border-radius:50%;background:rgba(51,204,255,0.15);animation:pulse-r 2s ease-out infinite}
+		@keyframes pulse-r{0%{transform:scale(0.5);opacity:1}100%{transform:scale(2);opacity:0}}
+
+		/* SHARE BANNER */
+		.share-banner{background:var(--card2);border-radius:12px;padding:10px 14px;margin-bottom:10px;display:none;border:1px solid rgba(255,255,255,0.04)}
+		.share-banner.v{display:block}
+		.share-banner-link{font-size:11px;color:var(--accent);word-break:break-all;margin-top:4px;display:block}
+	</style>
+</head>
+<body>
+<div class="app">
+	<header class="header">
+		<h1>🚗 Dude <em>Where Is My Car</em></h1>
+		<div class="header-actions">
+			<button class="ibtn" id="btn-sat" title="Map style">🗺</button>
+			<button class="ibtn" id="btn-fav" title="Favorites">⭐</button>
+			<button class="ibtn" id="btn-hist" title="History">🕐</button>
+			<button class="ibtn" id="btn-settings" title="Settings">⚙</button>
+		</div>
+	</header>
+
+	<div class="map-wrap">
+		<div id="map"></div>
+		<div class="ld" id="ld"><div class="ld-i">📡</div><p>Getting your location...</p></div>
+
+		<div class="speed-pill" id="speed-pill"><div><span class="speed-v" id="speed-v">0</span><span class="speed-u"> km/h</span></div></div>
+
+		<div class="nav-bar" id="nav-bar">
+			<div class="nav-row">
+				<div class="nav-left"><div class="nav-icon">🚗</div><div class="nav-text"><h3 id="nav-title">Navigating to car</h3><p id="nav-sub">Follow the arrow</p></div></div>
+				<div style="text-align:right"><div class="nav-dist" id="nav-dist">0 m</div><div class="nav-eta" id="nav-eta">~0 min</div></div>
+			</div>
+			<div class="nav-step" id="nav-step"><span class="nav-step-icon" id="step-icon">⬆️</span><span id="step-text">Head towards your car</span></div>
+		</div>
+
+		<div class="compass-wrap" id="compass"><div class="compass-outer"><div class="compass-arrow" id="c-arrow"></div></div><div class="compass-lbl">direction to car</div></div>
+
+		<div class="fab-col" id="fabs">
+			<button class="fab" id="fab-center">🎯</button>
+			<button class="fab" id="fab-zi">+</button>
+			<button class="fab" id="fab-zo">−</button>
+		</div>
+
+		<div class="sheet" id="sheet">
+			<div class="sheet-handle"></div>
+			<div class="sheet-timer" id="sh-timer">Parked <span id="timer-v">just now</span></div>
+
+			<!-- Multi-car tabs -->
+			<div class="car-tabs" id="car-tabs" style="display:none"></div>
+
+			<!-- Photo preview -->
+			<div class="park-photo" id="park-photo"><img id="photo-img" src="" alt="Parking photo"></div>
+
+			<!-- Detail chips -->
+			<div class="park-chips" id="park-chips">
+				<div class="chip"><label>Floor</label><div class="cv" id="d-floor">—</div></div>
+				<div class="chip"><label>Zone</label><div class="cv" id="d-zone">—</div></div>
+				<div class="chip"><label>Spot</label><div class="cv" id="d-spot">—</div></div>
+			</div>
+
+			<!-- Timer alarm -->
+			<div class="timer-alarm" id="timer-alarm">
+				<div class="timer-alarm-row">
+					<div class="timer-alarm-left"><span>⏰</span><div><div class="timer-alarm-time" id="alarm-time">0:00</div><div class="timer-alarm-label">Meter expires in</div></div></div>
+					<button class="ibtn" onclick="clearAlarm()" style="font-size:12px">✕</button>
+				</div>
+			</div>
+
+			<!-- Share banner -->
+			<div class="share-banner" id="share-banner">
+				<div style="font-size:12px;font-weight:600">📤 Share this link so others can find your car:</div>
+				<a class="share-banner-link" id="share-link" target="_blank"></a>
+			</div>
+
+			<!-- Actions -->
+			<div id="sh-actions">
+				<button class="abtn park" onclick="parkCar()">📍 Park Here</button>
+			</div>
+		</div>
+
+		<div class="toast" id="toast"></div>
+	</div>
+</div>
+
+<!-- Overlay -->
+<div class="overlay" id="overlay"></div>
+
+<!-- History Panel -->
+<div class="panel" id="panel-hist">
+	<div class="panel-hdr"><h2>🕐 History</h2><button class="ibtn" onclick="closePanel()">✕</button></div>
+	<div id="hist-list"></div>
+</div>
+
+<!-- Favorites Panel -->
+<div class="panel" id="panel-fav">
+	<div class="panel-hdr"><h2>⭐ Favorites</h2><button class="ibtn" onclick="closePanel()">✕</button></div>
+	<div id="fav-list"></div>
+</div>
+
+<!-- Settings Panel -->
+<div class="panel" id="panel-set">
+	<div class="panel-hdr"><h2>⚙ Settings</h2><button class="ibtn" onclick="closePanel()">✕</button></div>
+	<div class="panel-item" onclick="toggleVoice()"><div class="pi-icon">🔊</div><div class="pi-text" id="voice-label">Voice guidance: ON</div></div>
+	<div class="panel-item" onclick="toggleSound()"><div class="pi-icon">🔔</div><div class="pi-text" id="sound-label">Sound effects: ON</div></div>
+	<div class="panel-item" onclick="toggleAutoCenter()"><div class="pi-icon">🎯</div><div class="pi-text" id="ac-label">Auto-center: ON</div></div>
+	<div class="panel-item" onclick="clearAllData()"><div class="pi-icon" style="background:rgba(255,77,106,0.1)">🗑</div><div class="pi-text" style="color:var(--accent2)">Clear all data</div></div>
+</div>
+
+<!-- Park Modal -->
+<div class="modal" id="park-modal">
+	<div class="modal-c">
+		<h3>📝 Parking Details</h3>
+		<button class="photo-btn" onclick="document.getElementById('photo-input').click()">📷 Take Photo of Spot</button>
+		<input type="file" id="photo-input" accept="image/*" capture="environment">
+		<div id="photo-preview" style="display:none;margin-bottom:8px"><img id="preview-img" style="width:100%;height:100px;object-fit:cover;border-radius:10px" src=""></div>
+		<div class="mrow">
+			<input class="minp" id="in-floor" placeholder="Floor (B2)">
+			<input class="minp" id="in-zone" placeholder="Zone (A)">
+			<input class="minp" id="in-spot" placeholder="Spot #">
+		</div>
+		<input class="minp" id="in-note" placeholder="Notes (near elevator, blue pillar...)">
+		<div class="mbrow">
+			<button class="mbtn c" onclick="closeParkModal(false)">Skip</button>
+			<button class="mbtn ok" onclick="closeParkModal(true)">Save</button>
+		</div>
+	</div>
+</div>
+
+<!-- Timer Modal -->
+<div class="modal" id="timer-modal">
+	<div class="modal-c">
+		<h3>⏰ Set Parking Timer</h3>
+		<p style="text-align:center;color:var(--muted);font-size:13px;margin-bottom:8px">Get alerted before your meter expires</p>
+		<div class="timer-input">
+			<input type="number" id="timer-hrs" value="1" min="0" max="24">
+			<span>h</span>
+			<input type="number" id="timer-mins" value="0" min="0" max="59" step="5">
+			<span>m</span>
+		</div>
+		<div class="mbrow">
+			<button class="mbtn c" onclick="closeTimerModal(false)">No Timer</button>
+			<button class="mbtn ok" onclick="closeTimerModal(true)">Set Timer</button>
+		</div>
+	</div>
+</div>
+
+<!-- Add Car Modal -->
+<div class="modal" id="car-modal">
+	<div class="modal-c">
+		<h3>🚗 Add a Car</h3>
+		<input class="minp" id="in-carname" placeholder="Car name (e.g. My Tesla, Mom's Car)">
+		<div class="mbrow">
+			<button class="mbtn c" onclick="closeCarModal(false)">Cancel</button>
+			<button class="mbtn ok" onclick="closeCarModal(true)">Add</button>
+		</div>
+	</div>
+</div>
+
+<!-- Save Favorite Modal -->
+<div class="modal" id="fav-modal">
+	<div class="modal-c">
+		<h3>⭐ Save as Favorite</h3>
+		<input class="minp" id="in-favname" placeholder="Name (e.g. Office Parking, Mall P2)">
+		<div class="mbrow">
+			<button class="mbtn c" onclick="closeFavModal(false)">Cancel</button>
+			<button class="mbtn ok" onclick="closeFavModal(true)">Save</button>
+		</div>
+	</div>
+</div>
+
+<!-- Celebration -->
+<div class="celeb" id="celeb">
+	<div class="celeb-in">
+		<div class="celeb-i">🎉</div>
+		<h2>You found your car!</h2>
+		<p id="celeb-txt">Great job</p>
+		<button class="abtn park" style="max-width:200px;margin:0 auto" onclick="dismissCeleb()">Awesome!</button>
+	</div>
+</div>
+
+<!-- Onboarding -->
+<div class="onboard" id="onboard">
+	<div class="ob-slide" id="ob-slide">
+		<div class="ob-icon" id="ob-icon">🚗</div>
+		<h2 id="ob-title">Dude Where Is My Car</h2>
+		<p id="ob-desc">Never forget where you parked again. Mark your spot, take a photo, and navigate back with voice guidance.</p>
+	</div>
+	<div class="ob-dots" id="ob-dots"></div>
+	<button class="abtn park" style="max-width:240px" id="ob-btn" onclick="nextOnboard()">Next</button>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin="anonymous"></script>
+<script>
+// ===== CONFIG =====
+var OB_SLIDES=[
+	{icon:'🚗',title:'Dude Where Is My Car',desc:'Never forget where you parked again. Mark your spot, take a photo, and navigate back with voice guidance.'},
+	{icon:'📍',title:'Park Your Car',desc:'Tap "Park Here" to save your location. Add floor, zone, spot number and even a photo for easy recall.'},
+	{icon:'🧭',title:'Navigate Back',desc:'Follow the compass arrow and voice directions to walk back to your car on real streets.'},
+	{icon:'⏰',title:'Parking Timer',desc:'Set a meter timer and get alerted before it expires. Share your parking spot with friends and family.'},
+	{icon:'⭐',title:'Save Favorites',desc:'Save frequent parking spots as favorites for quick access. Track multiple cars at once.'}
+];
+var obStep=0;
+
+// ===== STATE =====
+var map,userMarker,userPulse,carMarker,routeLine,favMarkers=[];
+var userPos=null,carPos=null,navigating=false,parkedAt=null;
+var deviceHeading=null,currentSpeed=0;
+var parkNote={floor:'',zone:'',spot:'',note:''},parkPhoto=null;
+var alarmEnd=null,alarmInterval=null;
+var voiceOn=true,soundOn=true,autoCenter=true;
+var darkTile,satTile,isSat=false;
+var cars=[],activeCar=0;
+var routeSteps=[];
+
+// ===== INIT =====
+function init(){
+	// Check onboarding
+	if(!localStorage.getItem('parkme_ob_done')){
+		showOnboard();
+	}
+	// Load settings
+	voiceOn=localStorage.getItem('parkme_voice')!=='off';
+	soundOn=localStorage.getItem('parkme_sound')!=='off';
+	autoCenter=localStorage.getItem('parkme_ac')!=='off';
+	updateSettingsUI();
+
+	map=L.map('map',{zoomControl:false,attributionControl:false}).setView([42.7,23.32],16);
+	darkTile=L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{maxZoom:20}).addTo(map);
+	satTile=L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',{maxZoom:19});
+
+	loadCars();
+	loadSavedCar();
+	startTracking();
+	startCompass();
+	renderFavMarkers();
+}
+
+// ===== ONBOARDING =====
+function showOnboard(){document.getElementById('onboard').classList.add('show');renderOB();}
+function renderOB(){
+	var s=OB_SLIDES[obStep];
+	document.getElementById('ob-icon').textContent=s.icon;
+	document.getElementById('ob-title').textContent=s.title;
+	document.getElementById('ob-desc').textContent=s.desc;
+	document.getElementById('ob-btn').textContent=obStep<OB_SLIDES.length-1?'Next':'Get Started';
+	var dots='';for(var i=0;i<OB_SLIDES.length;i++)dots+='<div class="ob-dot'+(i===obStep?' active':'')+'"></div>';
+	document.getElementById('ob-dots').innerHTML=dots;
+}
+function nextOnboard(){
+	obStep++;
+	if(obStep>=OB_SLIDES.length){document.getElementById('onboard').classList.remove('show');localStorage.setItem('parkme_ob_done','1');return;}
+	renderOB();
+}
+
+// ===== GPS =====
+function startTracking(){
+	if(!navigator.geolocation){toast('GPS not supported',1);document.getElementById('ld').classList.add('h');return;}
+	navigator.geolocation.getCurrentPosition(function(p){
+		handlePosition(p);
+		navigator.geolocation.watchPosition(handlePosition,function(){},{enableHighAccuracy:true,maximumAge:3000,timeout:30000});
+	},function(err){
+		document.getElementById('ld').classList.add('h');
+		toast('GPS Error: '+err.message,1);
+	},{enableHighAccuracy:true,timeout:20000});
+}
+function handlePosition(p){
+	userPos={lat:p.coords.latitude,lng:p.coords.longitude,acc:p.coords.accuracy,spd:p.coords.speed};
+	currentSpeed=p.coords.speed!=null?Math.round(p.coords.speed*3.6):0;
+	updateUserMarker();
+	document.getElementById('ld').classList.add('h');
+	if(navigating&&carPos)updateNav();
+}
+function updateUserMarker(){
+	if(!userPos)return;var ll=[userPos.lat,userPos.lng];
+	if(!userMarker){
+		userPulse=L.marker(ll,{icon:L.divIcon({className:'you-pulse',iconSize:[40,40],iconAnchor:[20,20]}),zIndexOffset:999}).addTo(map);
+		userMarker=L.marker(ll,{icon:L.divIcon({className:'you-marker',iconSize:[16,16],iconAnchor:[8,8]}),zIndexOffset:1000}).addTo(map);
+		map.setView(ll,17);
+	}else{userMarker.setLatLng(ll);userPulse.setLatLng(ll);}
+	if(navigating&&autoCenter)map.panTo(ll);
+}
+
+// ===== COMPASS =====
+function startCompass(){
+	if(typeof DeviceOrientationEvent!=='undefined'&&typeof DeviceOrientationEvent.requestPermission==='function'){
+		document.addEventListener('click',function f(){DeviceOrientationEvent.requestPermission().then(function(r){if(r==='granted')window.addEventListener('deviceorientation',onDO);});document.removeEventListener('click',f);},{once:true});
+	}else{window.addEventListener('deviceorientationabsolute',onDO,true);window.addEventListener('deviceorientation',onDO);}
+}
+function onDO(e){
+	if(e.webkitCompassHeading!==undefined)deviceHeading=e.webkitCompassHeading;
+	else if(e.alpha!==null)deviceHeading=(e.absolute?e.alpha:(360-e.alpha));
+}
+
+// ===== PARK =====
+function parkCar(){
+	if(!userPos){toast('Waiting for GPS...',1);return;}
+	carPos={lat:userPos.lat,lng:userPos.lng};parkedAt=Date.now();
+	document.getElementById('park-modal').classList.add('open');
+	vib(20);
+}
+function closeParkModal(save){
+	document.getElementById('park-modal').classList.remove('open');
+	if(save){
+		parkNote={floor:gv('in-floor'),zone:gv('in-zone'),spot:gv('in-spot'),note:gv('in-note')};
+	}else{parkNote={floor:'',zone:'',spot:'',note:''};}
+	cv('in-floor');cv('in-zone');cv('in-spot');cv('in-note');
+	document.getElementById('photo-preview').style.display='none';
+	// Show timer modal
+	document.getElementById('timer-modal').classList.add('open');
+}
+function closeTimerModal(set){
+	document.getElementById('timer-modal').classList.remove('open');
+	if(set){
+		var h=parseInt(document.getElementById('timer-hrs').value)||0;
+		var m=parseInt(document.getElementById('timer-mins').value)||0;
+		if(h>0||m>0){alarmEnd=Date.now()+(h*3600000)+(m*60000);startAlarm();}
+	}
+	finishPark();
+}
+function finishPark(){
+	saveCar();placeCarMarker();showParkedUI();
+	toast('Car location saved!');playSound('park');vib(30);
+	map.setView([carPos.lat,carPos.lng],17);
+	// Generate share link
+	updateShareBanner();
+}
+
+// Photo capture
+document.getElementById('photo-input').addEventListener('change',function(e){
+	var file=e.target.files[0];if(!file)return;
+	var reader=new FileReader();
+	reader.onload=function(ev){
+		parkPhoto=ev.target.result;
+		document.getElementById('preview-img').src=parkPhoto;
+		document.getElementById('photo-preview').style.display='block';
+	};
+	reader.readAsDataURL(file);
+});
+
+function placeCarMarker(){
+	if(carMarker)map.removeLayer(carMarker);
+	carMarker=L.marker([carPos.lat,carPos.lng],{icon:L.divIcon({className:'car-marker',html:'🚗',iconSize:[34,34],iconAnchor:[17,17]}),zIndexOffset:500}).addTo(map);
+}
+
+// ===== NAVIGATE =====
+function startNav(){
+	if(!carPos||!userPos)return;
+	navigating=true;showNavUI();updateNav();fetchRoute();
+	var b=L.latLngBounds([[userPos.lat,userPos.lng],[carPos.lat,carPos.lng]]);
+	map.fitBounds(b,{padding:[100,80]});
+	vib(15);playSound('nav');
+	if(voiceOn)speak('Navigation started. Follow the arrow to your car.');
+}
+function updateNav(){
+	if(!carPos||!userPos)return;
+	var dist=gDist(userPos.lat,userPos.lng,carPos.lat,carPos.lng);
+	var bearing=gBear(userPos.lat,userPos.lng,carPos.lat,carPos.lng);
+	var rot=bearing;if(deviceHeading!==null)rot=bearing-deviceHeading;
+	document.getElementById('c-arrow').style.transform='rotate('+rot+'deg)';
+	var dt=dist>999?(dist/1000).toFixed(1)+' km':Math.round(dist)+' m';
+	document.getElementById('nav-dist').textContent=dt;
+	var mins=Math.max(1,Math.round(dist/1000/5*60));
+	document.getElementById('nav-eta').textContent=dist<15?'Arrived!':'~'+mins+' min';
+	document.getElementById('nav-sub').textContent=dt+' away';
+	document.getElementById('speed-v').textContent=Math.max(0,currentSpeed);
+	updateStepInstruction(dist,bearing);
+	if(dist<15)celebrate();
+}
+function updateStepInstruction(dist,bearing){
+	var dir='';var icon='⬆️';
+	if(deviceHeading!==null){
+		var rel=((bearing-deviceHeading)+360)%360;
+		if(rel<30||rel>330){dir='Continue straight';icon='⬆️';}
+		else if(rel>=30&&rel<60){dir='Bear right';icon='↗️';}
+		else if(rel>=60&&rel<120){dir='Turn right';icon='➡️';}
+		else if(rel>=120&&rel<150){dir='Sharp right';icon='↘️';}
+		else if(rel>=150&&rel<210){dir='Turn around';icon='⬇️';}
+		else if(rel>=210&&rel<240){dir='Sharp left';icon='↙️';}
+		else if(rel>=240&&rel<300){dir='Turn left';icon='⬅️';}
+		else{dir='Bear left';icon='↖️';}
+	}else{dir='Head towards your car';icon='🧭';}
+	if(dist<50)dir='Your car is nearby!';
+	if(dist<15){dir='You\'re here!';icon='🎉';}
+	document.getElementById('step-icon').textContent=icon;
+	document.getElementById('step-text').textContent=dir;
+	// Voice guidance at milestones
+	if(voiceOn){
+		if(dist<15&&!window._said15){speak('You have arrived at your car!');window._said15=true;}
+		else if(dist<50&&!window._said50){speak('Your car is nearby, about '+Math.round(dist)+' meters away.');window._said50=true;}
+		else if(dist<200&&!window._said200){speak(dir+'. '+Math.round(dist)+' meters to your car.');window._said200=true;}
+	}
+}
+function fetchRoute(){
+	if(!carPos||!userPos)return;
+	var url='https://router.project-osrm.org/route/v1/foot/'+userPos.lng+','+userPos.lat+';'+carPos.lng+','+carPos.lat+'?overview=full&geometries=geojson&steps=true';
+	fetch(url).then(function(r){return r.json();}).then(function(d){
+		if(d.routes&&d.routes[0]){
+			var coords=d.routes[0].geometry.coordinates.map(function(c){return[c[1],c[0]];});
+			if(routeLine)map.removeLayer(routeLine);
+			routeLine=L.polyline(coords,{color:'#33ccff',weight:5,opacity:0.8,lineCap:'round',lineJoin:'round'}).addTo(map);
+			if(d.routes[0].legs&&d.routes[0].legs[0])routeSteps=d.routes[0].legs[0].steps||[];
+		}
+	}).catch(function(){
+		if(routeLine)map.removeLayer(routeLine);
+		routeLine=L.polyline([[userPos.lat,userPos.lng],[carPos.lat,carPos.lng]],{color:'#33ccff',weight:3,dashArray:'8,8',opacity:0.6}).addTo(map);
+	});
+}
+function stopNav(){
+	navigating=false;window._said15=window._said50=window._said200=false;
+	if(routeLine){map.removeLayer(routeLine);routeLine=null;}
+	cls('compass');cls('nav-bar');cls('speed-pill');
+	showParkedUI();
+}
+function clearCar(){
+	if(carMarker){map.removeLayer(carMarker);carMarker=null;}
+	if(routeLine){map.removeLayer(routeLine);routeLine=null;}
+	carPos=null;parkedAt=null;navigating=false;parkNote={floor:'',zone:'',spot:'',note:''};parkPhoto=null;
+	clearAlarm();
+	localStorage.removeItem('parkme_car');localStorage.removeItem('parkme_time');localStorage.removeItem('parkme_note');localStorage.removeItem('parkme_photo');
+	cls('compass');cls('nav-bar');cls('speed-pill');cls('share-banner');
+	showDefaultUI();toast('Parking cleared');vib(15);
+}
+
+// ===== SHARE =====
+function updateShareBanner(){
+	if(!carPos)return;
+	var url='https://www.google.com/maps?q='+carPos.lat+','+carPos.lng;
+	document.getElementById('share-link').textContent=url;
+	document.getElementById('share-link').href=url;
+	document.getElementById('share-banner').classList.add('v');
+}
+function shareCar(){
+	if(!carPos)return;
+	var url='https://www.google.com/maps?q='+carPos.lat+','+carPos.lng;
+	var txt='🚗 My car is parked here: '+url;
+	if(parkNote.floor)txt+='\nFloor: '+parkNote.floor;
+	if(parkNote.zone)txt+=' Zone: '+parkNote.zone;
+	if(parkNote.spot)txt+=' Spot: '+parkNote.spot;
+	if(parkNote.note)txt+='\n📝 '+parkNote.note;
+	if(navigator.share){navigator.share({title:'My Parked Car',text:txt,url:url});}
+	else{navigator.clipboard.writeText(txt).then(function(){toast('Link copied!');});}
+}
+function openGMaps(){
+	if(!carPos)return;
+	window.open('https://www.google.com/maps/dir/?api=1&destination='+carPos.lat+','+carPos.lng+'&travelmode=walking','_blank');
+}
+
+// ===== ALARM =====
+function startAlarm(){
+	document.getElementById('timer-alarm').classList.add('v');
+	updateAlarmDisplay();
+	alarmInterval=setInterval(function(){
+		updateAlarmDisplay();
+		if(alarmEnd&&Date.now()>=alarmEnd){
+			clearInterval(alarmInterval);
+			toast('⏰ Parking meter expired!',1);
+			if(voiceOn)speak('Warning! Your parking meter has expired!');
+			vib([200,100,200,100,200]);
+			playSound('alarm');
+		}
+	},1000);
+	localStorage.setItem('parkme_alarm',alarmEnd.toString());
+}
+function updateAlarmDisplay(){
+	if(!alarmEnd)return;
+	var left=Math.max(0,alarmEnd-Date.now());
+	var m=Math.floor(left/60000);var s=Math.floor((left%60000)/1000);
+	document.getElementById('alarm-time').textContent=m+':'+(s<10?'0':'')+s;
+	if(left<300000)document.getElementById('alarm-time').style.color='var(--accent2)';
+}
+function clearAlarm(){
+	alarmEnd=null;if(alarmInterval)clearInterval(alarmInterval);
+	document.getElementById('timer-alarm').classList.remove('v');
+	localStorage.removeItem('parkme_alarm');
+}
+
+// ===== MULTI-CAR =====
+function loadCars(){
+	cars=JSON.parse(localStorage.getItem('parkme_cars')||'[{"name":"My Car","emoji":"🚗"}]');
+	activeCar=parseInt(localStorage.getItem('parkme_active_car')||'0');
+	if(activeCar>=cars.length)activeCar=0;
+	renderCarTabs();
+}
+function saveCars(){localStorage.setItem('parkme_cars',JSON.stringify(cars));localStorage.setItem('parkme_active_car',activeCar.toString());}
+function renderCarTabs(){
+	if(cars.length<=1){document.getElementById('car-tabs').style.display='none';return;}
+	document.getElementById('car-tabs').style.display='flex';
+	document.getElementById('car-tabs').innerHTML=cars.map(function(c,i){
+		return'<div class="car-tab'+(i===activeCar?' active':'')+'" onclick="switchCar('+i+')"><span class="car-emoji">'+c.emoji+'</span>'+c.name+'</div>';
+	}).join('')+'<div class="car-tab car-tab-add" onclick="addCarModal()">+ Add</div>';
+}
+function switchCar(i){activeCar=i;saveCars();loadSavedCar();renderCarTabs();}
+function addCarModal(){document.getElementById('car-modal').classList.add('open');}
+function closeCarModal(save){
+	document.getElementById('car-modal').classList.remove('open');
+	if(save){var n=gv('in-carname')||'Car '+(cars.length+1);cars.push({name:n,emoji:'🚗'});saveCars();renderCarTabs();}
+	cv('in-carname');
+}
+
+// ===== FAVORITES =====
+function saveFav(){
+	if(!carPos){toast('No parking location',1);return;}
+	document.getElementById('fav-modal').classList.add('open');
+}
+function closeFavModal(save){
+	document.getElementById('fav-modal').classList.remove('open');
+	if(save&&carPos){
+		var name=gv('in-favname')||'Favorite';
+		var favs=JSON.parse(localStorage.getItem('parkme_favs')||'[]');
+		favs.unshift({name:name,lat:carPos.lat,lng:carPos.lng,time:Date.now()});
+		if(favs.length>30)favs=favs.slice(0,30);
+		localStorage.setItem('parkme_favs',JSON.stringify(favs));
+		toast('⭐ Saved to favorites!');renderFavMarkers();
+	}
+	cv('in-favname');
+}
+function renderFavMarkers(){
+	favMarkers.forEach(function(m){map.removeLayer(m);});favMarkers=[];
+	var favs=JSON.parse(localStorage.getItem('parkme_favs')||'[]');
+	favs.forEach(function(f){
+		var m=L.marker([f.lat,f.lng],{icon:L.divIcon({className:'fav-marker',html:'⭐',iconSize:[24,24],iconAnchor:[12,12]})}).addTo(map);
+		m.bindPopup('<b>'+f.name+'</b>');
+		favMarkers.push(m);
+	});
+}
+
+// ===== UI STATES =====
+function showDefaultUI(){
+	document.getElementById('sh-actions').innerHTML='<button class="abtn park" onclick="parkCar()">📍 Park Here</button>';
+	cls('sh-timer');cls('park-chips');cls('park-photo');cls('timer-alarm');cls('share-banner');
+	renderCarTabs();
+}
+function showParkedUI(){
+	document.getElementById('sh-actions').innerHTML=
+		'<div class="brow">'+
+			'<button class="abtn go" onclick="startNav()">🧭 Navigate</button>'+
+			'<button class="abtn sq sec" onclick="shareCar()">📤</button>'+
+			'<button class="abtn sq sec" onclick="saveFav()">⭐</button>'+
+			'<button class="abtn sq" style="background:var(--accent2);color:#fff" onclick="clearCar()">✕</button>'+
+		'</div>';
+	cls('compass');cls('nav-bar');cls('speed-pill');
+	updateTimer();updateDetails();updatePhoto();updateShareBanner();
+	renderCarTabs();
+	// Restore alarm
+	var sa=localStorage.getItem('parkme_alarm');
+	if(sa){alarmEnd=parseInt(sa);if(alarmEnd>Date.now())startAlarm();else clearAlarm();}
+}
+function showNavUI(){
+	document.getElementById('sh-actions').innerHTML=
+		'<div class="brow">'+
+			'<button class="abtn park" onclick="openGMaps()">🗺 Google Maps</button>'+
+			'<button class="abtn sq" style="background:var(--accent2);color:#fff" onclick="stopNav()">■</button>'+
+		'</div>';
+	show('compass');show('nav-bar');show('speed-pill');
+	updateTimer();
+}
+function updateTimer(){
+	if(!parkedAt)return;var d=Date.now()-parkedAt;var m=Math.floor(d/60000);var h=Math.floor(m/60);m=m%60;
+	var t=h>0?h+'h '+m+'m ago':m>0?m+' min ago':'just now';
+	document.getElementById('timer-v').textContent=t;
+	document.getElementById('sh-timer').classList.add('v');
+}
+function updateDetails(){
+	if(parkNote.floor||parkNote.zone||parkNote.spot){
+		document.getElementById('d-floor').textContent=parkNote.floor||'—';
+		document.getElementById('d-zone').textContent=parkNote.zone||'—';
+		document.getElementById('d-spot').textContent=parkNote.spot||'—';
+		document.getElementById('park-chips').classList.add('v');
+	}else{cls('park-chips');}
+}
+function updatePhoto(){
+	if(parkPhoto){document.getElementById('photo-img').src=parkPhoto;document.getElementById('park-photo').classList.add('v');}
+	else{cls('park-photo');}
+}
+setInterval(updateTimer,30000);
+
+// ===== STORAGE =====
+function saveCar(){
+	var key=activeCar>0?'parkme_car_'+activeCar:'parkme_car';
+	localStorage.setItem(key,JSON.stringify(carPos));
+	localStorage.setItem(key+'_time',parkedAt.toString());
+	localStorage.setItem(key+'_note',JSON.stringify(parkNote));
+	if(parkPhoto)localStorage.setItem(key+'_photo',parkPhoto);else localStorage.removeItem(key+'_photo');
+	var hist=JSON.parse(localStorage.getItem('parkme_history')||'[]');
+	hist.unshift({lat:carPos.lat,lng:carPos.lng,time:parkedAt,note:parkNote});
+	if(hist.length>30)hist=hist.slice(0,30);
+	localStorage.setItem('parkme_history',JSON.stringify(hist));
+}
+function loadSavedCar(){
+	// Clean previous
+	if(carMarker){map.removeLayer(carMarker);carMarker=null;}
+	if(routeLine){map.removeLayer(routeLine);routeLine=null;}
+	navigating=false;cls('compass');cls('nav-bar');cls('speed-pill');
+
+	var key=activeCar>0?'parkme_car_'+activeCar:'parkme_car';
+	var s=localStorage.getItem(key);
+	var st=localStorage.getItem(key+'_time');
+	var sn=localStorage.getItem(key+'_note');
+	var sp=localStorage.getItem(key+'_photo');
+	if(s){
+		carPos=JSON.parse(s);parkedAt=st?parseInt(st):Date.now();
+		parkNote=sn?JSON.parse(sn):{floor:'',zone:'',spot:'',note:''};
+		parkPhoto=sp||null;
+		placeCarMarker();showParkedUI();
+	}else{carPos=null;parkedAt=null;parkNote={floor:'',zone:'',spot:'',note:''};parkPhoto=null;showDefaultUI();}
+}
+
+// ===== PANELS =====
+function openPanel(id){
+	closePanel();
+	document.getElementById('panel-'+id).classList.add('open');
+	document.getElementById('overlay').classList.add('open');
+	if(id==='hist')renderHist();
+	if(id==='fav')renderFavList();
+}
+function closePanel(){
+	document.querySelectorAll('.panel').forEach(function(p){p.classList.remove('open');});
+	document.getElementById('overlay').classList.remove('open');
+}
+function renderHist(){
+	var h=JSON.parse(localStorage.getItem('parkme_history')||'[]');
+	var el=document.getElementById('hist-list');
+	if(!h.length){el.innerHTML='<div class="panel-empty">No parking history yet</div>';return;}
+	el.innerHTML=h.slice(0,20).map(function(x){
+		var d=new Date(x.time);var ds=d.toLocaleDateString()+' '+d.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
+		var det='';if(x.note&&x.note.floor)det=' · '+[x.note.floor,x.note.zone,x.note.spot].filter(Boolean).join('/');
+		return'<div class="panel-item" onclick="goTo('+x.lat+','+x.lng+')"><div class="pi-icon">📍</div><div class="pi-text">'+ds+det+'<small>'+x.lat.toFixed(5)+', '+x.lng.toFixed(5)+'</small></div></div>';
+	}).join('');
+}
+function renderFavList(){
+	var f=JSON.parse(localStorage.getItem('parkme_favs')||'[]');
+	var el=document.getElementById('fav-list');
+	if(!f.length){el.innerHTML='<div class="panel-empty">No favorites yet. Park your car and tap ⭐ to save.</div>';return;}
+	el.innerHTML=f.map(function(x,i){
+		return'<div class="panel-item" onclick="goTo('+x.lat+','+x.lng+')"><div class="pi-icon fav">⭐</div><div class="pi-text">'+x.name+'<small>'+new Date(x.time).toLocaleDateString()+'</small></div></div>';
+	}).join('');
+}
+function goTo(lat,lng){closePanel();map.setView([lat,lng],17);}
+
+// ===== SETTINGS =====
+function toggleVoice(){voiceOn=!voiceOn;localStorage.setItem('parkme_voice',voiceOn?'on':'off');updateSettingsUI();}
+function toggleSound(){soundOn=!soundOn;localStorage.setItem('parkme_sound',soundOn?'on':'off');updateSettingsUI();}
+function toggleAutoCenter(){autoCenter=!autoCenter;localStorage.setItem('parkme_ac',autoCenter?'on':'off');updateSettingsUI();}
+function updateSettingsUI(){
+	document.getElementById('voice-label').textContent='Voice guidance: '+(voiceOn?'ON':'OFF');
+	document.getElementById('sound-label').textContent='Sound effects: '+(soundOn?'ON':'OFF');
+	document.getElementById('ac-label').textContent='Auto-center: '+(autoCenter?'ON':'OFF');
+}
+function clearAllData(){
+	if(confirm('Clear all data?')){localStorage.clear();location.reload();}
+}
+
+// ===== MAP STYLE =====
+function toggleSat(){
+	isSat=!isSat;
+	if(isSat){map.removeLayer(darkTile);satTile.addTo(map);document.getElementById('btn-sat').classList.add('active');}
+	else{map.removeLayer(satTile);darkTile.addTo(map);document.getElementById('btn-sat').classList.remove('active');}
+}
+
+// ===== CELEBRATE =====
+function celebrate(){
+	navigating=false;window._said15=window._said50=window._said200=false;
+	if(routeLine){map.removeLayer(routeLine);routeLine=null;}
+	cls('compass');cls('nav-bar');cls('speed-pill');
+	var d=parkedAt?Date.now()-parkedAt:0;var m=Math.floor(d/60000);
+	document.getElementById('celeb-txt').textContent=m>0?'Walked back in '+m+' min':'That was quick!';
+	document.getElementById('celeb').classList.add('show');
+	spawnConfetti();vib([50,50,50,50,100]);playSound('arrive');
+	if(voiceOn)speak('Congratulations! You found your car!');
+}
+function dismissCeleb(){document.getElementById('celeb').classList.remove('show');clearCar();}
+function spawnConfetti(){
+	var colors=['#33ccff','#00d672','#ff4d6a','#ff9f43','#a855f7','#ffd700'];
+	for(var i=0;i<40;i++){
+		var c=document.createElement('div');c.className='confetti-piece';
+		c.style.left=Math.random()*100+'vw';c.style.top=-10+'px';
+		c.style.background=colors[Math.floor(Math.random()*colors.length)];
+		c.style.animationDuration=(2+Math.random()*2)+'s';
+		c.style.animationDelay=Math.random()*0.5+'s';
+		document.body.appendChild(c);
+		setTimeout(function(){c.remove();},4000);
+	}
+}
+
+// ===== VOICE =====
+function speak(text){
+	if(!voiceOn||!window.speechSynthesis)return;
+	var u=new SpeechSynthesisUtterance(text);u.rate=1;u.pitch=1;u.volume=0.8;
+	speechSynthesis.speak(u);
+}
+
+// ===== SOUNDS =====
+function playSound(type){
+	if(!soundOn)return;
+	try{
+		var ac=new(window.AudioContext||window.webkitAudioContext)();
+		var o=ac.createOscillator();var g=ac.createGain();
+		o.connect(g);g.connect(ac.destination);
+		if(type==='park'){o.frequency.value=800;g.gain.value=0.15;o.start();o.stop(ac.currentTime+0.15);}
+		else if(type==='nav'){o.frequency.value=600;g.gain.value=0.1;o.start();o.frequency.linearRampToValueAtTime(900,ac.currentTime+0.2);o.stop(ac.currentTime+0.25);}
+		else if(type==='arrive'){o.frequency.value=523;g.gain.value=0.15;o.start();o.frequency.setValueAtTime(659,ac.currentTime+0.15);o.frequency.setValueAtTime(784,ac.currentTime+0.3);o.stop(ac.currentTime+0.45);}
+		else if(type==='alarm'){o.type='square';o.frequency.value=440;g.gain.value=0.2;o.start();o.stop(ac.currentTime+0.5);}
+	}catch(e){}
+}
+
+// ===== MATH =====
+function gDist(a,b,c,d){var R=6371000,dL=(c-a)*Math.PI/180,dN=(d-b)*Math.PI/180,x=Math.sin(dL/2)*Math.sin(dL/2)+Math.cos(a*Math.PI/180)*Math.cos(c*Math.PI/180)*Math.sin(dN/2)*Math.sin(dN/2);return R*2*Math.atan2(Math.sqrt(x),Math.sqrt(1-x));}
+function gBear(a,b,c,d){var dL=(d-b)*Math.PI/180,y=Math.sin(dL)*Math.cos(c*Math.PI/180),x=Math.cos(a*Math.PI/180)*Math.sin(c*Math.PI/180)-Math.sin(a*Math.PI/180)*Math.cos(c*Math.PI/180)*Math.cos(dL);return((Math.atan2(y,x)*180/Math.PI)+360)%360;}
+
+// ===== UTILS =====
+function toast(m,e){var el=document.getElementById('toast');el.textContent=m;el.className='toast show'+(e?' err':'');setTimeout(function(){el.className='toast';},2500);}
+function vib(p){if(navigator.vibrate)navigator.vibrate(p);}
+function gv(id){return document.getElementById(id).value.trim();}
+function cv(id){document.getElementById(id).value='';}
+function show(id){document.getElementById(id).classList.add('v');}
+function cls(id){document.getElementById(id).classList.remove('v');}
+
+// ===== EVENTS =====
+document.getElementById('btn-hist').onclick=function(){openPanel('hist');};
+document.getElementById('btn-fav').onclick=function(){openPanel('fav');};
+document.getElementById('btn-settings').onclick=function(){openPanel('set');};
+document.getElementById('btn-sat').onclick=toggleSat;
+document.getElementById('overlay').onclick=closePanel;
+document.getElementById('fab-center').onclick=function(){if(userPos)map.setView([userPos.lat,userPos.lng],17);};
+document.getElementById('fab-zi').onclick=function(){map.zoomIn();};
+document.getElementById('fab-zo').onclick=function(){map.zoomOut();};
+
+// ===== SERVICE WORKER — force update =====
+if('serviceWorker'in navigator){
+	navigator.serviceWorker.getRegistrations().then(function(regs){
+		regs.forEach(function(r){r.unregister();});
+	}).then(function(){
+		caches.keys().then(function(names){names.forEach(function(n){caches.delete(n);});});
+	}).then(function(){
+		navigator.serviceWorker.register('sw.js').catch(function(){});
+	});
+}
+
+// ===== START =====
+init();
+</script>
+</body>
+</html>
