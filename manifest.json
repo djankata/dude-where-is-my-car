@@ -1,0 +1,61 @@
+{
+	"id": "/dude-where-is-my-car/",
+	"name": "Dude Where Is My Car",
+	"short_name": "DWIMC",
+	"description": "Never forget where you parked. Mark your spot, take a photo, and navigate back with voice guidance.",
+	"start_url": "/dude-where-is-my-car/",
+	"scope": "/dude-where-is-my-car/",
+	"scope_extensions": [
+		{"origin": "https://router.project-osrm.org"},
+		{"origin": "https://*.basemaps.cartocdn.com"},
+		{"origin": "https://server.arcgisonline.com"}
+	],
+	"display": "standalone",
+	"display_override": ["standalone", "window-controls-overlay", "minimal-ui"],
+	"orientation": "portrait",
+	"lang": "en",
+	"dir": "ltr",
+	"background_color": "#0a0a1a",
+	"theme_color": "#0a0a1a",
+	"categories": ["navigation", "utilities", "lifestyle"],
+	"iarc_rating_id": "",
+	"prefer_related_applications": false,
+	"related_applications": [],
+	"icons": [
+		{
+			"src": "icon-192.png",
+			"sizes": "192x192",
+			"type": "image/png",
+			"purpose": "any maskable"
+		},
+		{
+			"src": "icon-512.png",
+			"sizes": "512x512",
+			"type": "image/png",
+			"purpose": "any maskable"
+		}
+	],
+	"screenshots": [
+		{
+			"src": "screenshot-1.png",
+			"sizes": "1080x1920",
+			"type": "image/png",
+			"form_factor": "narrow",
+			"label": "Park your car with one tap"
+		},
+		{
+			"src": "screenshot-2.png",
+			"sizes": "1080x1920",
+			"type": "image/png",
+			"form_factor": "narrow",
+			"label": "Navigate back with compass and voice"
+		},
+		{
+			"src": "screenshot-3.png",
+			"sizes": "1080x1920",
+			"type": "image/png",
+			"form_factor": "narrow",
+			"label": "Add parking details and photo"
+		}
+	]
+}
